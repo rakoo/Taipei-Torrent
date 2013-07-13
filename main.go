@@ -4,6 +4,8 @@ import (
 	"flag"
 	"log"
 	"os"
+
+	"camlistore.org/pkg/client"
 )
 
 var torrent string
@@ -22,6 +24,9 @@ func main() {
 		}
 		usage()
 	}
+
+	// Add flag overriding camlistore settings if needed
+	client.AddFlags()
 
 	torrent = args[0]
 

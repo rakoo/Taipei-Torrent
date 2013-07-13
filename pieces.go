@@ -4,6 +4,7 @@ package main
 import (
 	"crypto/sha1"
 	"errors"
+	//"log"
 	"fmt"
 	"runtime"
 )
@@ -11,17 +12,25 @@ import (
 func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int, goodBits *Bitset, err error) {
 	pieceLength := m.Info.PieceLength
 	numPieces := int((totalLength + pieceLength - 1) / pieceLength)
-	goodBits = NewBitset(int(numPieces))
 	ref := m.Info.Pieces
 	if len(ref) != numPieces*sha1.Size {
 		err = errors.New("Incorrect Info.Pieces length")
 		return
 	}
+
+	// If the store can verify pieces, do it
+	if fs.CanVerifyPieces() {
+		return verifyPiecesWithFileStore(fs, pieceLength, numPieces, ref)
+	}
+
+	goodBits = NewBitset(int(numPieces))
+
+	// Otherwise, use our own methods
 	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
 	if err != nil {
 		return
 	}
-	for i := 0; i < numPieces; i++ {
+	for i := int(0); i < numPieces; i++ {
 		base := i * sha1.Size
 		end := base + sha1.Size
 		if checkEqual([]byte(ref[base:end]), currentSums[base:end]) {
@@ -32,6 +41,35 @@ func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int, g
 		}
 	}
 	return
+}
+
+func verifyPiecesWithFileStore(fs FileStore, pieceLength int64, numPieces int, ref string) (good, bad int, goodBits *Bitset, err error) {
+	pieces := make([]string, numPieces)
+	piecesIndex := make(map[string]int)
+	for i := 0; i < numPieces; i++ {
+		sha1 := ref[i*sha1.Size : (i+1)*sha1.Size]
+		pieces[i] = sha1
+		piecesIndex[sha1] = i
+	}
+
+	verified, err := fs.VerifyPieces(pieces)
+	if err != nil {
+		return
+	}
+
+	goodBits = NewBitset(int(numPieces))
+	for sha1, isGood := range verified {
+		if isGood {
+			good++
+			goodBits.Set(piecesIndex[sha1])
+		} else {
+			bad++
+		}
+
+	}
+
+	return
+
 }
 
 func checkEqual(ref, current []byte) bool {
@@ -98,6 +136,18 @@ func hashPiece(h chan chunk, result chan chunk) {
 
 func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err error) {
 	ref := m.Info.Pieces
+
+	if fs.CanVerifyPieces() {
+		pieceHash := ref[pieceIndex*sha1.Size : (pieceIndex+1)*sha1.Size]
+
+		verified, err := fs.VerifyPieces([]string{pieceHash})
+		if err != nil {
+			return false, err
+		}
+
+		return verified[pieceHash], nil
+	}
+
 	currentSum, err := computePieceSum(fs, totalLength, m.Info.PieceLength, pieceIndex)
 	if err != nil {
 		return

@@ -12,6 +12,8 @@ type FileStore interface {
 	io.ReaderAt
 	io.WriterAt
 	io.Closer
+	CanVerifyPieces() bool
+	VerifyPieces([]string) (verified map[string]bool, err error)
 }
 
 type fileEntry struct {
@@ -185,5 +187,14 @@ func (f *fileStore) Close() (err error) {
 			f.files[i].fd = nil
 		}
 	}
+	return
+}
+
+func (f *fileStore) CanVerifyPieces() (canVerify bool) {
+	return false
+}
+
+func (f *fileStore) VerifyPieces(sha1s []string) (verified map[string]bool, err error) {
+	// Noop
 	return
 }

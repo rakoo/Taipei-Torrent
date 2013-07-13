@@ -48,6 +48,8 @@ var gateway string
 var fileDir string
 var useDHT bool
 var trackerLessMode bool
+var useBlobStore bool
+var blobStoreUri string
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
@@ -61,6 +63,9 @@ func init() {
 		"testing the DHT mode.")
 	flag.BoolVar(&useNATPMP, "useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
+
+	flag.BoolVar(&useBlobStore, "useBlobStore", false, "Use blobStore instead of fileStore")
+	flag.StringVar(&blobStoreUri, "blobStoreUri", "http://localhost:3179", "The camlistore URI")
 }
 
 func peerId() string {
@@ -264,7 +269,12 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 		}
 	}
 
-	t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
+	if useBlobStore {
+		t.fileStore, t.totalSize, err = NewBlobStore(&t.m.Info, dir)
+	} else {
+		t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
+	}
+
 	if err != nil {
 		return
 	}
