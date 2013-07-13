@@ -75,34 +75,31 @@ func NewBlobStore(info *InfoDict, uri string) (b *blobStore, totalLength int64, 
 func (b *blobStore) ReadAt(p []byte, off int64) (n int, err error) {
 	var divisor big.Int
 	var m big.Int
-	index, beginDiv := divisor.DivMod(big.NewInt(off), big.NewInt(b.pieceLength), &m)
-	begin := int(beginDiv.Int64())
-	pieceHash := b.pieceOffsets[index.Int64()]
+	indexBig, beginBig := divisor.DivMod(big.NewInt(off), big.NewInt(b.pieceLength), &m)
+	index := indexBig.Int64()
+	begin := int(beginBig.Int64())
+	pieceHash := b.pieceOffsets[index]
 	piece := b.inMemChunks[pieceHash]
 
-	// TODO: Do we really want to read from unfinished pieces ?
-	if piece != nil {
-		n, err = io.ReadFull(bytes.NewReader(piece.Data[off:]), p)
-		return
+	if piece == nil {
+
+		blobRef := blobrefFromHexhash(pieceHash)
+		readCloser, thisPieceLength, err := b.client.FetchStreaming(blobRef)
+		if err != nil {
+			return 0, err
+		}
+		defer readCloser.Close()
+
+		piece = newTmpPiece(thisPieceLength)
+		_, err = io.ReadFull(readCloser, piece.Data)
+		if err != nil {
+			return 0, err
+		}
+
+		b.inMemChunks[pieceHash] = piece
 	}
 
-	blobRef := blobrefFromHexhash(pieceHash)
-	readCloser, _, err := b.client.FetchStreaming(blobRef)
-	if err != nil {
-		return
-	}
-
-	// consume 'begin' bytes
-	devnull := make([]byte, begin)
-	slurped, err := io.ReadAtLeast(readCloser, devnull, begin)
-	if slurped != begin || err != nil {
-		return
-	}
-
-	n, err = io.ReadAtLeast(readCloser, p, int(b.pieceLength)-begin)
-	if err != nil {
-		return
-	}
+	n = copy(p, piece.Data[begin:begin+len(p)])
 
 	// At this point if there's anything left to read it means we've run off the
 	// end of the file store. Read zeros. This is defined by the bittorrent protocol.
@@ -193,6 +190,7 @@ func (b *blobStore) VerifyPieces(sha1s []string) (verified map[string]bool, err 
 				ret[hash] = true
 			} else {
 				log.Printf(fmt.Sprintf("Mismatch: torrent says %s, we have %s", fmt.Sprintf("%x", hash), tmpBlobRef.Digest()))
+				delete(b.inMemChunks, hash)
 			}
 		}
 	}
