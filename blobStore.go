@@ -19,15 +19,15 @@ type tmpPiece struct {
 }
 
 func newTmpPiece(pieceLength int64) (t *tmpPiece) {
-	data := make([]byte, pieceLength)
-	for i := 0; i < len(data); i++ {
-		data[i] = byte(0)
-	}
-
 	return &tmpPiece{
-		Data: data,
+		Data: make([]byte, pieceLength),
 	}
 }
+
+type pieceInCache struct {
+  buffer bytes.Reader
+}
+
 
 func (t *tmpPiece) WriteAt(p []byte, off int64) (n int, err error) {
 	n, err = io.ReadFull(bytes.NewReader(p), t.Data[int(off):int(off)+len(p)])
@@ -50,6 +50,8 @@ type blobStore struct {
 
 	// The total length of the data
 	totalLength int64
+
+  cachedPieces map[string]bytes.Buffer
 }
 
 func NewBlobStore(info *InfoDict, uri string) (b *blobStore, totalLength int64, err error) {
@@ -67,6 +69,7 @@ func NewBlobStore(info *InfoDict, uri string) (b *blobStore, totalLength int64, 
 		pieceOffsets: pieceOffsets,
 		pieceLength:  info.PieceLength,
 		totalLength:  totalLength,
+    cachedPieces: make(map[string]bytes.Buffer),
 	}
 
 	return
@@ -77,8 +80,10 @@ func (b *blobStore) ReadAt(p []byte, off int64) (n int, err error) {
 	var m big.Int
 	indexBig, beginBig := divisor.DivMod(big.NewInt(off), big.NewInt(b.pieceLength), &m)
 	index := indexBig.Int64()
-	begin := int(beginBig.Int64())
+	begin := beginBig.Int64()
 	pieceHash := b.pieceOffsets[index]
+
+  /*
 	piece := b.inMemChunks[pieceHash]
 
 	if piece == nil {
@@ -100,6 +105,19 @@ func (b *blobStore) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	n = copy(p, piece.Data[begin:begin+len(p)])
+  */
+
+  pieceReader, ok := b.cachedPieces[pieceHash]
+  if !ok {
+    blobRef := blobrefFromHexhash(pieceHash)
+    readCloser, _, _ := b.client.FetchStreaming(blobRef)
+    var buf bytes.Buffer
+    io.Copy(&buf, readCloser)
+
+    b.cachedPieces[pieceHash] = buf
+  }
+
+  n, err = pieceReader.ReadAt(p, begin)
 
 	// At this point if there's anything left to read it means we've run off the
 	// end of the file store. Read zeros. This is defined by the bittorrent protocol.

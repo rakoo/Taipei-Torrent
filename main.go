@@ -4,6 +4,8 @@ import (
 	"flag"
 	"log"
 	"os"
+  "os/signal"
+  "runtime/pprof"
 
 	"camlistore.org/pkg/client"
 )
@@ -30,13 +32,32 @@ func main() {
 
 	torrent = args[0]
 
+  f, err := os.Create("pprof.log")
+  if err != nil {
+    log.Fatal(err)
+  }
+  pprof.StartCPUProfile(f)
+  defer pprof.StopCPUProfile()
+
+  interruptChan := make(chan os.Signal, 1)
+  signal.Notify(interruptChan, os.Interrupt)
+
 	log.Println("Starting.")
 	ts, err := NewTorrentSession(torrent)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
 		return
 	}
-	err = ts.DoTorrent()
+
+  stopChan := make(chan bool)
+  go func() {
+    select {
+    case <-interruptChan:
+      stopChan <- true
+    }
+  }()
+
+	err = ts.DoTorrent(stopChan)
 	if err != nil {
 		log.Println("Failed: ", err)
 	} else {

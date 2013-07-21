@@ -405,7 +405,7 @@ func (t *TorrentSession) deadlockDetector() {
 	}
 }
 
-func (t *TorrentSession) DoTorrent() (err error) {
+func (t *TorrentSession) DoTorrent(stopChan <-chan bool) (err error) {
 	t.heartbeat = make(chan bool, 1)
 	go t.deadlockDetector()
 	log.Println("Fetching torrent.")
@@ -538,6 +538,9 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				}
 				peer.keepAlive(now)
 			}
+
+    case <- stopChan:
+      return
 		}
 	}
 	return
