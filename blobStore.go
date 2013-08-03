@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"os"
 
 	"camlistore.org/pkg/blobref"
 	"camlistore.org/pkg/client"
@@ -82,41 +83,27 @@ func (b *blobStore) ReadAt(p []byte, off int64) (n int, err error) {
 	begin := beginBig.Int64()
 	pieceHash := b.pieceOffsets[index]
 
-  /*
-	piece := b.inMemChunks[pieceHash]
-
-	if piece == nil {
-
+	piece, ok := b.cachedPieces[pieceHash]
+	if !ok {
 		blobRef := blobrefFromHexhash(pieceHash)
-		readCloser, thisPieceLength, err := b.client.FetchStreaming(blobRef)
+		seekerFetcher := blobref.SeekerFromStreamingFetcher(b.client)
+		rs, _, err := seekerFetcher.Fetch(blobRef)
 		if err != nil {
 			return 0, err
 		}
-		defer readCloser.Close()
+		defer rs.(io.Closer).Close()
 
-		piece = newTmpPiece(thisPieceLength)
-		_, err = io.ReadFull(readCloser, piece.Data)
-		if err != nil {
-			return 0, err
-		}
-
-		b.inMemChunks[pieceHash] = piece
+		b.cachedPieces[pieceHash] = rs
+		piece = rs
 	}
 
-	n = copy(p, piece.Data[begin:begin+len(p)])
-  */
+	_, err = piece.Seek(begin, os.SEEK_SET)
+	if err != nil {
+		log.Println("Couldn't seek to offset in piece")
+		return 0, err
+	}
 
-  pieceReader, ok := b.cachedPieces[pieceHash]
-  if !ok {
-    blobRef := blobrefFromHexhash(pieceHash)
-    readCloser, _, _ := b.client.FetchStreaming(blobRef)
-    var buf bytes.Buffer
-    io.Copy(&buf, readCloser)
-
-    b.cachedPieces[pieceHash] = buf
-  }
-
-  n, err = pieceReader.ReadAt(p, begin)
+	n, err = piece.Read(p)
 
 	// At this point if there's anything left to read it means we've run off the
 	// end of the file store. Read zeros. This is defined by the bittorrent protocol.
