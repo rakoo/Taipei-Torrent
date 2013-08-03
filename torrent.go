@@ -539,8 +539,8 @@ func (t *TorrentSession) DoTorrent(stopChan <-chan bool) (err error) {
 				peer.keepAlive(now)
 			}
 
-    case <- stopChan:
-      return
+		case <-stopChan:
+			return
 		}
 	}
 	return

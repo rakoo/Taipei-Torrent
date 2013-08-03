@@ -23,7 +23,7 @@ func parseMagnet(s string) (Magnet, error) {
 	//
 	// xt: exact topic.
 	//   ~ urn: uniform resource name.
-	//   ~ btih: bittorrent infohash. 
+	//   ~ btih: bittorrent infohash.
 	// dn: display name (optional).
 	// tr: address tracker (optional).
 	u, err := url.Parse(s)

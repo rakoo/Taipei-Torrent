@@ -25,9 +25,8 @@ func newTmpPiece(pieceLength int64) (t *tmpPiece) {
 }
 
 type pieceInCache struct {
-  buffer bytes.Reader
+	buffer bytes.Reader
 }
-
 
 func (t *tmpPiece) WriteAt(p []byte, off int64) (n int, err error) {
 	n, err = io.ReadFull(bytes.NewReader(p), t.Data[int(off):int(off)+len(p)])
@@ -51,7 +50,7 @@ type blobStore struct {
 	// The total length of the data
 	totalLength int64
 
-  cachedPieces map[string]bytes.Buffer
+	cachedPieces map[string]io.ReadSeeker
 }
 
 func NewBlobStore(info *InfoDict, uri string) (b *blobStore, totalLength int64, err error) {
@@ -69,7 +68,7 @@ func NewBlobStore(info *InfoDict, uri string) (b *blobStore, totalLength int64, 
 		pieceOffsets: pieceOffsets,
 		pieceLength:  info.PieceLength,
 		totalLength:  totalLength,
-    cachedPieces: make(map[string]bytes.Buffer),
+		cachedPieces: make(map[string]io.ReadSeeker),
 	}
 
 	return
