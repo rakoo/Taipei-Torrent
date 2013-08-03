@@ -223,11 +223,17 @@ func (b *blobStore) VerifyPieces(sha1s []string) (verified map[string]bool, err 
 	}
 
 	result := make(chan map[string]bool)
-
+	stopCollecting := make(chan bool)
 	go func() {
-		for exist := range existing {
-			decoded, _ := hex.DecodeString(exist.Digest())
-			ret[string(decoded)] = true
+	collect:
+		for {
+			select {
+			case exist := <-existing:
+				decoded, _ := hex.DecodeString(exist.Digest())
+				ret[string(decoded)] = true
+			case <-stopCollecting:
+				break collect
+			}
 		}
 
 		result <- ret
@@ -238,6 +244,7 @@ func (b *blobStore) VerifyPieces(sha1s []string) (verified map[string]bool, err 
 		return
 	}
 
+	stopCollecting <- true
 	ret = <-result
 
 	for _, hash := range sha1s {
