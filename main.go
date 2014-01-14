@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 var (
 	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
 	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
+	useLPD     = flag.Bool("useLPD", true, "Use Local Peer Discovery")
 )
 
 var torrent string
@@ -72,6 +74,19 @@ func main() {
 		go ts.DoTorrent()
 	}
 
+	var announces chan *LpdAnnounce
+	if *useLPD {
+		lpd := NewLpdAnnouncer(listenPort)
+		announces, err = lpd.listenPeerDiscoveries()
+		if err != nil {
+			log.Println("Couldn't listen for Local Peer Discoveries: ", err)
+		} else {
+			for _, ts := range torrentSessions {
+				lpd.registerForLPD(ts.m.InfoHash)
+			}
+		}
+	}
+
 mainLoop:
 	for {
 		select {
@@ -89,6 +104,16 @@ mainLoop:
 			log.Printf("New bt connection for ih %x", c.infohash)
 			if ts, ok := torrentSessions[c.infohash]; ok {
 				ts.AcceptNewPeer(c)
+			}
+		case announce := <-announces:
+			hexhash, err := hex.DecodeString(announce.infohash)
+			if err != nil {
+				log.Println("Err with hex-decoding:", err)
+				break
+			}
+			if ts, ok := torrentSessions[string(hexhash)]; ok {
+				log.Printf("Received LPD announce for ih %s", announce.infohash)
+				ts.hintNewPeer(announce.peer)
 			}
 		}
 	}
