@@ -87,13 +87,13 @@ func (lpd *LpdAnnouncer) registerForLPD(ih string) {
 	fmt.Fprintln(&requestMessage, "")
 
 	go func() {
-		// Announce at launch, then every 10 seconds
+		// Announce at launch, then every 5 minutes
 		_, err := lpd.lpdConn.WriteToUDP(requestMessage.Bytes(), lpd.lpdAddr)
 		if err != nil {
 			log.Println(err)
 		}
 
-		for _ = range time.Tick(10 * time.Second) {
+		for _ = range time.Tick(5 * time.Minute) {
 			_, err := lpd.lpdConn.WriteToUDP(requestMessage.Bytes(), lpd.lpdAddr)
 			if err != nil {
 				log.Println(err)
